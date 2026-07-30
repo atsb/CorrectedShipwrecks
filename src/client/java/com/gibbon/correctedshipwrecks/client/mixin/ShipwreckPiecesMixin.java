@@ -19,7 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
+ 
 package com.gibbon.correctedshipwrecks.client.mixin;
 
 import net.minecraft.core.BlockPos;
@@ -46,45 +46,44 @@ public abstract class ShipwreckPiecesMixin extends StructurePiece {
                     target = "Lnet/minecraft/world/level/WorldGenLevel;getHeight(Lnet/minecraft/world/level/levelgen/Heightmap$Types;II)I"
             )
     )
-
-    // method that fixes the calculations based on WORLD_SURFACE_WG and OCEAN_FLOOR_WG.
     private int filterShipwreckGroundHeight(WorldGenLevel level, Heightmap.Types heightmapType, int x, int z) {
-        if (heightmapType == Heightmap.Types.WORLD_SURFACE_WG) {
-            int oceanFloorY = level.getHeight(Heightmap.Types.OCEAN_FLOOR_WG, x, z);
-            BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, oceanFloorY, z);
-            int targetY = level.getSeaLevel();
+        int vanillaY = level.getHeight(heightmapType, x, z);
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, vanillaY, z);
 
-            while (pos.getY() > level.getSeaLevel()) {
-                BlockState blockState = level.getBlockState(pos);
-
-                if (isSolidGround(blockState)) {
-                    targetY = pos.getY();
-                    break;
+        // find the actual highest / topmost block
+        while (pos.getY() > level.getMinY() && level.getBlockState(pos).isAir()) {
+            pos.move(0, -1, 0);
+        }
+        BlockState topState = level.getBlockState(pos);
+        if (isIceOrSnow(topState)) {
+            // sink the ship down to the ocean floor
+            while (pos.getY() > level.getMinY()) {
+                BlockState state = level.getBlockState(pos);
+                if (!state.isAir() && !isIceOrSnow(state) && !isWaterOrPlant(state)) {
+                    // found the actual seabed
+                    return pos.getY();
                 }
                 pos.move(0, -1, 0);
             }
-
-	    // we embed the wrecks into the seabed / floor a little bit
-            return Math.max(level.getMinY(), targetY - 3);
         }
-        return level.getHeight(heightmapType, x, z);
+
+        // if it's not ice we return the vanilla height.
+        return vanillaY;
     }
 
-    // avoid all we can that pertains to wrecks.  This allows generation into seabeds full of life and allows the generation logic to also place seagrass etc onto the wreck.
-    private boolean isSolidGround(BlockState blockState) {
-        if (blockState.isAir()) {
-            return true;
-        }
-
+    private boolean isIceOrSnow(BlockState blockState) {
         String blockId = blockState.getBlock().getDescriptionId().toLowerCase();
-        boolean isNonSolidBlock = blockId.contains("cloud")
-                || blockId.contains("packed_ice")
+        return blockId.contains("packed_ice")
                 || blockId.contains("blue_ice")
                 || blockId.contains("ice")
-                || blockId.contains("water")
+                || blockId.contains("snow");
+    }
+
+    private boolean isWaterOrPlant(BlockState blockState) {
+        String blockId = blockState.getBlock().getDescriptionId().toLowerCase();
+        return blockId.contains("water")
                 || blockId.contains("kelp")
                 || blockId.contains("seagrass")
                 || blockId.contains("pickle");
-        return !isNonSolidBlock;
     }
 }
